@@ -2,8 +2,9 @@ import numpy as np
 
 class Christoffel():
     monpowers = None
+    score = None
 
-    def __init__(self, degree=2):
+    def __init__(self, degree):
         self.degree = degree
 
     def _compute_mat(self, X):
@@ -16,7 +17,7 @@ class Christoffel():
             mat = np.concatenate((mat,[x]))
         return mat
 
-    def fit(self, X=None, y=None):
+    def fit(self, X, y=None):
         n,p = X.shape
         if self.degree==0:
             self.monpowers=np.zeros((1,p))
@@ -45,10 +46,15 @@ class Christoffel():
         self.model = np.linalg.inv(np.dot(np.transpose(mat),mat)/n+np.identity(nb_mon)*0.000001)
 
     def predict(self, X):
+        score = self.score_samples(X)
+        # TODO threshold
+        return score
+
+    def score_samples(self, X):
         assert self.monpowers is not None
         mat = self._compute_mat(X)
-        X = np.sum(mat*np.dot(mat,self.model),axis=1)
-        return X
+        self.score = np.sum(mat*np.dot(mat,self.model),axis=1)
+        return self.score
 
     def fit_predict(self, X, y=None):
         self.fit(X)
@@ -57,6 +63,3 @@ class Christoffel():
     def score(self, X, y, sample_weight=None):
         return accuracy_score(y, self.predict(X), sample_weight=sample_weight)
 
-c = Christoffel(3)
-X = np.random.random((6,3))
-print(c.fit_predict(X))
