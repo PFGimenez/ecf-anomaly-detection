@@ -1,8 +1,8 @@
-import ecf
+from ecf import EmpiricalChristoffelFunction
 import numpy as np
 
 # Initialize the detector with default degree (4)
-c = ecf.EmpiricalChristoffelFunction()
+c = EmpiricalChristoffelFunction()
 
 # Generate random data points
 X = np.array([[0,2],[1,1.5],[0.2,1.9],[100,1.2]])

@@ -1,7 +1,12 @@
+# Author: Pierre-François Gimenez <pierre-francois.gimenez@laas.fr>
+# License: MIT
+
 import numpy as np
 import math
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
-class EmpiricalChristoffelFunction():
+class EmpiricalChristoffelFunction(BaseEstimator, ClassifierMixin):
     """Unsupervised Outlier Detection using the empirical Christoffel function
 
     Fitting complexity: O(n*p^d+p^(3d))
@@ -28,12 +33,13 @@ class EmpiricalChristoffelFunction():
     Examples
     --------
     >>> import ecf
+    >>> import numpy as np
     >>> c = ecf.EmpiricalChristoffelFunction()
     >>> X = np.array([[0,2],[1,1.5],[0.2,1.9],[100,1.2]])
     >>> c.fit_predict(X)
-    [ 1  1  1 -1]
+    array([ 1,  1,  1, -1])
     >>> c.score_
-    [   3.99998999    4.00015445    3.99999215 -151.32839602]
+    array([ 3.99998702,  4.00000255,  3.99997548, -8.04537834])
     """
     monpowers = None
     score_ = None
@@ -42,6 +48,14 @@ class EmpiricalChristoffelFunction():
 
     def __init__(self, degree=4):
         self.degree = degree
+
+    def get_params(self, deep=True):
+        return {"degree": self.degree}
+
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
 
     def _compute_mat(self, X):
         nb_mon = self.monpowers.shape[0]
@@ -64,8 +78,9 @@ class EmpiricalChristoffelFunction():
         -------
         self : object
         """
+        X = check_array(X)
         n,p = X.shape
-        if self.degree==0:
+        if self.degree == 0:
             self.monpowers = np.zeros((1,p))
         else:
             # create the monome powers
@@ -104,6 +119,10 @@ class EmpiricalChristoffelFunction():
         is_inlier : ndarray of shape (n_samples,)
             Returns -1 for anomalies/outliers and +1 for inliers.
         """
+
+        check_is_fitted(self)
+        X = check_array(X)
+
         _,p = X.shape
         self.score_samples(X)
         # level = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
@@ -111,6 +130,7 @@ class EmpiricalChristoffelFunction():
         return np.array([-1 if s <= level else 1 for s in self.score_])
 
     def score_samples(self, X):
+        X = check_array(X)
         assert self.monpowers is not None
         mat = self._compute_mat(X)
         self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
