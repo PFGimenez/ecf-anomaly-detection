@@ -10,7 +10,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     """Unsupervised Outlier Detection using the empirical Christoffel function
 
     Fitting complexity: O(n*p^d+p^(3d))
-    Prediction complexity: O()
+    Prediction complexity: O(n*p^d)
     where n is the number of examples, p is the number of features and d is the degree of the polynomial.
 
     This package follows the scikit-learn objects convention.
@@ -41,9 +41,9 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     >>> c.score_
     array([ 3.99998702,  4.00000255,  3.99997548, -8.04537834])
     """
-    monpowers = None
+    monpowers = None # size: O(p*p^(d+1))
     score_ = None
-    model_ = None
+    model_ = None # size: O(p^d*p^d)
     degree = None
 
     def __init__(self, degree=4):
@@ -65,6 +65,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
             x = np.power(x, self.monpowers)
             x = np.prod(x,axis=1)
             mat = np.concatenate((mat,[x]))
+        # mat size: O(n*p^(d+1))
         return mat
 
     def fit(self, X, y=None):
