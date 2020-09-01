@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-class Christoffel():
+class EmpiricalChristoffelFunction():
     """Unsupervised Outlier Detection using the empirical Christoffel function
 
     Fitting complexity: O(n*p^d+p^(3d))
@@ -25,8 +25,8 @@ class Christoffel():
 
     Examples
     --------
-    >>> import christoffel
-    >>> c = christoffel.Christoffel()
+    >>> import ecf
+    >>> c = ecf.EmpiricalChristoffelFunction()
     >>> X = np.array([[0,2],[1,1.5],[0.2,1.9],[100,1.2]])
     >>> c.fit_predict(X)
     [ 1  1  1 -1]
@@ -35,6 +35,7 @@ class Christoffel():
     """
     monpowers = None
     score_ = None
+    model_ = None
     degree = None
 
     def __init__(self, degree=4):
@@ -76,7 +77,7 @@ class Christoffel():
         # create the model
         nb_mon = self.monpowers.shape[0]
         mat = self._compute_mat(X)
-        self.model = np.linalg.inv(np.dot(np.transpose(mat),mat)/n+np.identity(nb_mon)*0.000001)
+        self.model_ = np.linalg.inv(np.dot(np.transpose(mat),mat)/n+np.identity(nb_mon)*0.000001)
 
     def predict(self, X):
         _,p = X.shape
@@ -88,7 +89,7 @@ class Christoffel():
     def score_samples(self, X):
         assert self.monpowers is not None
         mat = self._compute_mat(X)
-        self.score_ = np.sum(mat*np.dot(mat,self.model),axis=1)
+        self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
         return self.score_
 
     def fit_predict(self, X, y=None):
