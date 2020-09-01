@@ -151,5 +151,5 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         is_inlier : ndarray of shape (n_samples,)
             Returns -1 for anomalies/outliers and 1 for inliers.
         """
-        super().fit_predict(X)
+        return super().fit_predict(X)
 
