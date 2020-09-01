@@ -3,10 +3,10 @@
 
 import numpy as np
 import math
-from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
-class EmpiricalChristoffelFunction(BaseEstimator, ClassifierMixin):
+class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     """Unsupervised Outlier Detection using the empirical Christoffel function
 
     Fitting complexity: O(n*p^d+p^(3d))
@@ -151,6 +151,5 @@ class EmpiricalChristoffelFunction(BaseEstimator, ClassifierMixin):
         is_inlier : ndarray of shape (n_samples,)
             Returns -1 for anomalies/outliers and 1 for inliers.
         """
-        self.fit(X)
-        return self.predict(X)
+        super().fit_predict(X)
 
