@@ -8,6 +8,8 @@ class EmpiricalChristoffelFunction():
     Prediction complexity: O()
     where n is the number of examples, p is the number of features and d is the degree of the polynomial.
 
+    This package follows the scikit-learn objects convention.
+
     Parameters
     ----------
     degree : int, default=4
@@ -52,6 +54,16 @@ class EmpiricalChristoffelFunction():
         return mat
 
     def fit(self, X, y=None):
+        """Fit the model using X as training data.
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+        y : Ignored
+            Not used, present for API consistency by convention.
+        Returns
+        -------
+        self : object
+        """
         n,p = X.shape
         if self.degree==0:
             self.monpowers = np.zeros((1,p))
@@ -78,8 +90,20 @@ class EmpiricalChristoffelFunction():
         nb_mon = self.monpowers.shape[0]
         mat = self._compute_mat(X)
         self.model_ = np.linalg.inv(np.dot(np.transpose(mat),mat)/n+np.identity(nb_mon)*0.000001)
+        return self
 
     def predict(self, X):
+        """Predict the labels (1 inlier, -1 outlier) of X according to ECF.
+        This method allows to generalize prediction to *new observations* (not in the training set).
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            The query samples.
+        Returns
+        -------
+        is_inlier : ndarray of shape (n_samples,)
+            Returns -1 for anomalies/outliers and +1 for inliers.
+        """
         _,p = X.shape
         self.score_samples(X)
         # level = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
@@ -93,6 +117,20 @@ class EmpiricalChristoffelFunction():
         return self.score_
 
     def fit_predict(self, X, y=None):
+        """Fits the model to the training set X and returns the labels.
+        Label is 1 for an inlier and -1 for an outlier according to the ECF score.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            The query samples.
+        y : Ignored
+            Not used, present for API consistency by convention.
+        Returns
+        -------
+        is_inlier : ndarray of shape (n_samples,)
+            Returns -1 for anomalies/outliers and 1 for inliers.
+        """
         self.fit(X)
         return self.predict(X)
 
