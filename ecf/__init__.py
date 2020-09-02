@@ -9,9 +9,11 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     """Unsupervised Outlier Detection using the empirical Christoffel function
 
+    This model is suited for moderate dimensions and potentially very large number of observations.
+
     Fitting complexity: O(n*p^d+p^(3d))
-    Prediction complexity: O(n*p^d)
-    where n is the number of examples, p is the number of features and d is the degree of the polynomial.
+    Prediction complexity: O(n*p^(2d))
+    where n is the number of examples, p is the number of features and d is the degree of the polynomial. This complexity assumes d is constant. See [1] for more details.
 
     This package follows the scikit-learn objects convention.
 
@@ -23,12 +25,12 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     Attributes
     ----------
     score_ : ndarray of shape (n_samples,)
-        The density of the training samples. The higher, the more normal.
+        The score of the training samples. The lower, the more normal.
 
     References
     ----------
-    Lasserre, J. B., & Pauwels, E. (2019). The empirical Christoffel function with applications in data analysis. Advances in Computational Mathematics, 45(3), 1439-1468.
-    arXiv version: https://arxiv.org/pdf/1701.02886.pdf
+    [1] Pauwels, E., & Lasserre, J. B. (2016). Sorting out typicality with the inverse moment matrix SOS polynomial. In Advances in Neural Information Processing Systems (pp. 190-198).
+    [2] Lasserre, J. B., & Pauwels, E. (2019). The empirical Christoffel function with applications in data analysis. Advances in Computational Mathematics, 45(3), 1439-1468.
 
     Examples
     --------
@@ -41,9 +43,11 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     >>> c.score_
     array([ 3.99998702,  4.00000255,  3.99997548, -8.04537834])
     """
-    monpowers = None # size: O(p*p^(d+1))
+    monpowers = None # the monomials of degree less of equal to d
     score_ = None
-    model_ = None # size: O(p^d*p^d)
+    predict_ = None
+    level_set_ = None
+    model_ = None
     degree = None
 
     def __init__(self, degree=4):
@@ -65,7 +69,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
             x = np.power(x, self.monpowers)
             x = np.prod(x,axis=1)
             mat = np.concatenate((mat,[x]))
-        # mat size: O(n*p^(d+1))
+        # mat is denoted v_d(x) in [1]
+        # mat size: O(n*p^d)
         return mat
 
     def fit(self, X, y=None):
@@ -81,6 +86,9 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         """
         X = check_array(X)
         n,p = X.shape
+        self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+
+        # monome powers, denoted v_d(X) in [1]
         if self.degree == 0:
             self.monpowers = np.zeros((1,p))
         else:
@@ -104,8 +112,14 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
 
         # create the model
         nb_mon = self.monpowers.shape[0]
+        # in fact, level_set == nb_mon
         mat = self._compute_mat(X)
-        self.model_ = np.linalg.inv(np.dot(np.transpose(mat),mat)/n+np.identity(nb_mon)*0.000001)
+        md = np.dot(np.transpose(mat),mat)
+        # md is denoted M_d(mu) in [1]
+        # cf. the last equation of Section 2.2 in [1]
+        self.model_ = np.linalg.inv(md/n+np.identity(nb_mon)*0.000001)
+        # add a small value on the diagonal to avoid numerical problems
+        # model is M_d(mu)^-1 in [1]
         return self
 
     def predict(self, X):
@@ -124,16 +138,17 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         check_is_fitted(self)
         X = check_array(X)
 
-        _,p = X.shape
+        n,p = X.shape
         self.score_samples(X)
-        # level = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
-        level = 0
-        return np.array([-1 if s <= level else 1 for s in self.score_])
+        self.predict_ = np.ones(n, dtype=int)
+        self.predict_[self.score_ >= self.level_set_] = -1
+        return self.predict_
 
     def score_samples(self, X):
         X = check_array(X)
         assert self.monpowers is not None
         mat = self._compute_mat(X)
+        # cf. Eq. (2) in [1]
         self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
         return self.score_
 
