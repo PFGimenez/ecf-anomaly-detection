@@ -3,6 +3,8 @@
 
 import numpy as np
 import math
+from sklearn.preprocessing import RobustScaler
+from sklearn.decomposition import PCA
 from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
@@ -21,6 +23,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     ----------
     degree : int, default=4
         The degree of the polynomial. Higher the degree, more complex the model.
+    n_components : int, default=4
+        The maximal number of components.
 
     Attributes
     ----------
@@ -44,17 +48,30 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     array([ 3.99998702,  4.00000255,  3.99997548, -8.04537834])
     """
     monpowers = None # the monomials of degree less of equal to d
-    score_ = None
+    score_ = None # score of the last predict data
     predict_ = None
     level_set_ = None
     model_ = None
     degree = None
+    robust_scaler_ = None
+    pca_ = None
+    n_components = None
+    decision_scores_ = None # score of the training data, pyod-compliant
+    labels_ = None # labels of the training data, pyod-compliant
 
-    def __init__(self, degree=4):
+    def __init__(self, degree=4, n_components=4):
         self.degree = degree
+        self.n_components = n_components
+
+    def _process_data(self, X):
+        # if no need to remove components
+        if self.n_components is None or np.array(X).shape[1] <= self.n_components:
+            return X
+        else:
+            return self.pca_.transform(self.robust_scaler_.transform(X))
 
     def get_params(self, deep=True):
-        return {"degree": self.degree}
+        return {"degree": self.degree, "n_components": self.n_components}
 
     def set_params(self, **parameters):
         for parameter, value in parameters.items():
@@ -85,6 +102,13 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         self : object
         """
         X = check_array(X)
+
+        # learn the new robust scaler and PCA
+        self.robust_scaler_ = RobustScaler()
+        self.pca_ = PCA(n_components=self.n_components)
+        self.pca_.fit(self.robust_scaler_.fit_transform(X))
+
+        X = self._process_data(X)
         n,p = X.shape
         # level set proposed in [1]
         self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
@@ -121,6 +145,10 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         self.model_ = np.linalg.inv(md/n+np.identity(nb_mon)*0.000001)
         # add a small value on the diagonal to avoid numerical problems
         # model is M_d(mu)^-1 in [1]
+        self.decision_scores_ = self.decision_function(X)
+        self.labels_ = self.predict(X)
+        # self.labels_ = np.zeros(n, dtype=int)
+        # self.labels_[self.score_ >= self.level_set_] = 1
         return self
 
     def predict(self, X):
@@ -138,16 +166,20 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
 
         check_is_fitted(self)
         X = check_array(X)
+        X = self._process_data(X)
 
         n,p = X.shape
-        self.score_samples(X)
-        self.predict_ = np.ones(n, dtype=int)
-        self.predict_[self.score_ >= self.level_set_] = -1
+        self.decision_function(X)
+        self.predict_ = np.zeros(n, dtype=int)
+        self.predict_[self.score_ >= self.level_set_] = 1
         return self.predict_
 
-    def score_samples(self, X):
+    def decision_function(self, X):
+        check_is_fitted(self)
         X = check_array(X)
+        X = self._process_data(X)
         assert self.monpowers is not None
+
         mat = self._compute_mat(X)
         # cf. Eq. (2) in [1]
         self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
