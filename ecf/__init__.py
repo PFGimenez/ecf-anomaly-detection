@@ -25,6 +25,11 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         The degree of the polynomial. Higher the degree, more complex the model.
     n_components : int, default=4
         The maximal number of components.
+    contamination : 'auto' or float, default='auto'
+        The amount of contamination of the data set, i.e. the proportion of outliers in the data set. When fitting this is used to define the threshold on the scores of the samples.
+        - if 'auto', the threshold is determined as in the
+          original paper [1],
+        - if a float, the contamination should be in the range [0, 0.5].
 
     Attributes
     ----------
@@ -36,16 +41,6 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     [1] Pauwels, E., & Lasserre, J. B. (2016). Sorting out typicality with the inverse moment matrix SOS polynomial. In Advances in Neural Information Processing Systems (pp. 190-198).
     [2] Lasserre, J. B., & Pauwels, E. (2019). The empirical Christoffel function with applications in data analysis. Advances in Computational Mathematics, 45(3), 1439-1468.
 
-    Examples
-    --------
-    >>> import ecf
-    >>> import numpy as np
-    >>> c = ecf.EmpiricalChristoffelFunction()
-    >>> X = np.array([[0,2],[1,1.5],[0.2,1.9],[100,1.2]])
-    >>> c.fit_predict(X)
-    array([ 1,  1,  1, -1])
-    >>> c.score_
-    array([ 3.99998702,  4.00000255,  3.99997548, -8.04537834])
     """
     monpowers = None # the monomials of degree less of equal to d
     score_ = None # score of the last predict data
@@ -59,19 +54,21 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     decision_scores_ = None # score of the training data, pyod-compliant
     labels_ = None # labels of the training data, pyod-compliant
 
-    def __init__(self, degree=4, n_components=4):
+    def __init__(self, degree=4, n_components=4, contamination="auto"):
         self.degree = degree
         self.n_components = n_components
+        self.contamination = contamination
 
     def _process_data(self, X):
         # if no need to remove components
-        if self.n_components is None or np.array(X).shape[1] <= self.n_components:
+        # verify if not already processed
+        if self.pca_ is None or np.array(X).shape[1] <= self.n_components:
             return X
         else:
             return self.pca_.transform(self.robust_scaler_.transform(X))
 
     def get_params(self, deep=True):
-        return {"degree": self.degree, "n_components": self.n_components}
+        return {"degree": self.degree, "n_components": self.n_components, "contamination": self.contamination}
 
     def set_params(self, **parameters):
         for parameter, value in parameters.items():
@@ -103,16 +100,20 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         """
         X = check_array(X)
 
+        if self.contamination != 'auto' and not(0. < self.contamination <= .5):
+            raise ValueError("contamination must be in (0, 0.5], got: %f" % self.contamination)
+
+        if self.n_components is not None and np.array(X).shape[1] > self.n_components:
         # learn the new robust scaler and PCA
-        self.robust_scaler_ = RobustScaler()
-        self.pca_ = PCA(n_components=self.n_components)
-        self.pca_.fit(self.robust_scaler_.fit_transform(X))
+            self.robust_scaler_ = RobustScaler()
+            self.pca_ = PCA(n_components=self.n_components)
+            self.pca_.fit(self.robust_scaler_.fit_transform(X))
+        else:
+            self.robust_scaler_ = None
+            self.pca_ = None
 
         X = self._process_data(X)
         n,p = X.shape
-        # level set proposed in [1]
-        self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
-
         # monome powers, denoted v_d(X) in [1]
         if self.degree == 0:
             self.monpowers = np.zeros((1,p))
@@ -146,6 +147,16 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         # add a small value on the diagonal to avoid numerical problems
         # model is M_d(mu)^-1 in [1]
         self.decision_scores_ = self.decision_function(X)
+
+        # level set proposed in [1]
+        if self.contamination == "auto":
+            self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+        else:
+            self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
+            print(math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree)))
+            print(self.level_set_)
+
+
         self.labels_ = self.predict(X)
         # self.labels_ = np.zeros(n, dtype=int)
         # self.labels_[self.score_ >= self.level_set_] = 1
