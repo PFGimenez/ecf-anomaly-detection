@@ -7,7 +7,7 @@ from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
 class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
-    """Unsupervised Outlier Detection using the empirical Christoffel function
+    """Unsupervised outlier and novelty detection using the empirical Christoffel function
 
     This model is suited for moderate dimensions and potentially very large number of observations.
 
@@ -86,6 +86,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         """
         X = check_array(X)
         n,p = X.shape
+        # level set proposed in [1]
         self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
 
         # monome powers, denoted v_d(X) in [1]

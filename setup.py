@@ -8,10 +8,10 @@ setuptools.setup(
     version="0.1",
     author="Pierre-François Gimenez",
     author_email="<pierre-francois.gimenez@laas.fr>",
-    description="Empirical Christoffel function for outlier detection",
+    description="Empirical Christoffel function for anomaly detection",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/PFGimenez/ecf-outlier-detection",
+    url="https://github.com/PFGimenez/ecf-anomaly-detection",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
