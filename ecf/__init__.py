@@ -31,6 +31,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         - if 'auto', the threshold is determined as in the
           original paper [1],
         - if a float, the contamination should be in the range [0, 0.5].
+    filtering_frac : float, default=1.0
+        Learn with only the lowest 'filtering_frac' fraction of the training set in terms of outlier score (the most normal instances). Double the learning time if filtering_frac < 1.0.
 
     Attributes
     ----------
@@ -53,10 +55,11 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     decision_scores_ = None # score of the training data, pyod-compliant
     labels_ = None # labels of the training data, pyod-compliant
 
-    def __init__(self, degree=4, n_components=4, contamination="auto"):
+    def __init__(self, degree=4, n_components=4, contamination="auto", filtering_frac=1.0):
         self.degree = degree
         self.n_components = n_components
         self.contamination = contamination
+        self.filtering_frac = filtering_frac
 
     def _process_data(self, X):
         # if no need to remove components
@@ -67,7 +70,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
             return self.pca_.transform(self.robust_scaler_.transform(X))
 
     def get_params(self, deep=True):
-        return {"degree": self.degree, "n_components": self.n_components, "contamination": self.contamination}
+        return {"degree": self.degree, "n_components": self.n_components, "contamination": self.contamination, "filtering_frac": self.filtering_frac}
 
     def set_params(self, **parameters):
         for parameter, value in parameters.items():
@@ -87,14 +90,14 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         return mat
 
     def fit(self, X, y=None):
-        # self._fit_one_iter(X)
-        # if self.iterative:
-        #     p = np.percentile(self.decision_scores_, 80)
-        #     X = X[self.decision_scores_ < p]
-        #     self._fit_one_iter(X)
-        # return self
+        self._fit_once(X)
+        if self.filtering_frac < 1.0:
+            p = np.percentile(self.decision_scores_, self.filtering_frac*100)
+            X = X[self.decision_scores_ < p]
+            self._fit_once(X)
+        return self
 
-    # def _fit_one_iter(self, X, y=None):
+    def _fit_once(self, X, y=None):
         """Fit the model using X as training data.
         Parameters
         ----------
