@@ -3,6 +3,7 @@
 
 import numpy as np
 import math
+from random import shuffle
 from sklearn.preprocessing import RobustScaler
 from sklearn.decomposition import PCA
 from sklearn.base import BaseEstimator, OutlierMixin
@@ -47,10 +48,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     predict_ = None
     level_set_ = None
     model_ = None
-    degree = None
     robust_scaler_ = None
     pca_ = None
-    n_components = None
     decision_scores_ = None # score of the training data, pyod-compliant
     labels_ = None # labels of the training data, pyod-compliant
 
@@ -88,6 +87,14 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         return mat
 
     def fit(self, X, y=None):
+        # self._fit_one_iter(X)
+        # if self.iterative:
+        #     p = np.percentile(self.decision_scores_, 80)
+        #     X = X[self.decision_scores_ < p]
+        #     self._fit_one_iter(X)
+        # return self
+
+    # def _fit_one_iter(self, X, y=None):
         """Fit the model using X as training data.
         Parameters
         ----------
@@ -136,12 +143,11 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
                 self.monpowers = np.concatenate((self.monpowers, last))
             self.monpowers = np.concatenate((np.zeros((1,p)),self.monpowers))
 
-        # create the model
         nb_mon = self.monpowers.shape[0]
         # in fact, level_set == nb_mon
         mat = self._compute_mat(X)
         md = np.dot(np.transpose(mat),mat)
-        # md is denoted M_d(mu) in [1]
+        # md is denoted M_d(mu) in [1]. It is the moment matrix.
         # cf. the last equation of Section 2.2 in [1]
         self.model_ = np.linalg.inv(md/n+np.identity(nb_mon)*0.000001)
         # add a small value on the diagonal to avoid numerical problems
@@ -153,13 +159,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
             self.level_set_ = math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
         else:
             self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
-            print(math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree)))
-            print(self.level_set_)
-
 
         self.labels_ = self.predict(X)
-        # self.labels_ = np.zeros(n, dtype=int)
-        # self.labels_[self.score_ >= self.level_set_] = 1
         return self
 
     def predict(self, X):
@@ -181,8 +182,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
 
         n,p = X.shape
         self.decision_function(X)
-        self.predict_ = np.zeros(n, dtype=int)
-        self.predict_[self.score_ >= self.level_set_] = 1
+        self.predict_ = np.ones(n, dtype=int)
+        self.predict_[self.score_ >= self.level_set_] = -1
         return self.predict_
 
     def decision_function(self, X):
@@ -213,3 +214,47 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         """
         return super().fit_predict(X)
 
+class BaggedECF(BaseEstimator, OutlierMixin):
+
+    def __init__(self, degree=3, n_models=50, contamination="auto"):
+        self.degree = degree
+        self.n_models = n_models
+        self.contamination = contamination
+
+    def fit(self, X, y=None):
+        X = check_array(X)
+        n,p = X.shape
+        self.n_components = max(2,math.floor(math.sqrt(p)))
+        self.n_components = min(30,max(2,math.floor(p/3)))
+        # can't bag with p <= n_components, i.e. if p=1 or p=2
+        if p <= self.n_components:
+            self.models_ = [EmpiricalChristoffelFunction(self.degree, None, self.conmatimation)]
+            self.features_ = [[True]*p]
+            self.n_models = 1
+
+        self.models_ = []
+        self.features_ = []
+        for i in range(self.n_models):
+            f = np.array([True]*self.n_components + [False]*(p-self.n_components))
+            shuffle(f)
+            self.features_.append(f)
+            m = EmpiricalChristoffelFunction(self.degree, None, self.contamination)
+            train_set = X[np.random.choice(X.shape[0], X.shape[0], replace=True),:]
+            m.fit(train_set[:,f])
+            self.models_.append(m)
+
+        self.decision_scores_ = self.decision_function(X)
+
+    def decision_function(self, X):
+        # check_is_fitted(self) # TODO
+        X = check_array(X)
+        if False:
+            pred = np.array([self.models_[i].predict(X[:,self.features_[i]]) for i in range(self.n_models)])
+            pred[pred==1] = 0
+            pred[pred==-1] = 1
+            self.score_ = np.sum(pred,axis=0)
+            return self.score_
+        if True:
+            pred = np.array([self.models_[i].decision_function(X[:,self.features_[i]]) for i in range(self.n_models)])
+            self.score_ = np.sum(pred,axis=0)
+            return self.score_
