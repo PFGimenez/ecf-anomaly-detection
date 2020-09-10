@@ -8,6 +8,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.decomposition import PCA
 from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.metrics.pairwise import rbf_kernel
 
 class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     """Unsupervised outlier and novelty detection using the empirical Christoffel function
@@ -23,7 +24,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     Parameters
     ----------
     degree : int, default=4
-        The degree of the polynomial. Higher the degree, more complex the model.
+        The degree of the polynomial. Higher the degree, more complex the model. It should be at least 2.
     n_components : int, default=4
         The maximal number of components.
     contamination : 'auto' or float, default='auto'
@@ -45,6 +46,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     [2] Lasserre, J. B., & Pauwels, E. (2019). The empirical Christoffel function with applications in data analysis. Advances in Computational Mathematics, 45(3), 1439-1468.
 
     """
+
     monpowers = None # the monomials of degree less of equal to d
     score_ = None # score of the last predict data
     predict_ = None
@@ -217,6 +219,93 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         """
         return super().fit_predict(X)
 
+class KECF(BaseEstimator, OutlierMixin):
+    """Unsupervised outlier and novelty detection using the kernelized inverse Christoffel function
+
+    This package follows the scikit-learn objects convention.
+
+    Parameters
+    ----------
+    contamination : 'auto' or float, default='auto'
+        The amount of contamination of the data set, i.e. the proportion of outliers in the data set. When fitting this is used to define the threshold on the scores of the samples.
+        - if 'auto', the threshold is determined as in the
+          original paper [1],
+        - if a float, the contamination should be in the range [0, 0.5].
+    filtering_frac : float, default=1.0
+        Learn with only the lowest 'filtering_frac' fraction of the training set in terms of outlier score (the most normal instances). Double the learning time if filtering_frac < 1.0.
+
+    Attributes
+    ----------
+    score_ : ndarray of shape (n_samples,)
+        The score of the training samples. The lower, the more normal.
+
+    References
+    ----------
+    [3] Askari, A., Yang, F., & Ghaoui, L. E. (2018). Kernel-based outlier detection using the inverse christoffel function. arXiv preprint arXiv:1806.06775.
+    """
+
+    def __init__(self, kernel="rbf", gamma="auto", C=1, rho=1, contamination="auto"):
+        self.kernel = kernel
+        self.gamma = gamma
+        self.C = C
+        self.rho = rho
+        self.contamination = contamination
+
+    def fit(self, X, y=None):
+        self.X_train = check_array(X)
+        n,p = X.shape
+        # default value
+
+        if self.gamma == "auto":
+            self.gamma = 1/p
+
+        self.model = np.zeros((n,n))
+        # compute phi * phi.T from [3]
+        self.model = rbf_kernel(self.X_train,self.X_train)
+        print(self.model.shape)
+        self.model = np.linalg.inv(np.identity(n) + self.model/self.rho)
+        print(self.model.shape)
+        if self.contamination == "auto":
+            self.level_set_ = 100
+            # self.level_set_ = self.rho * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+        else:
+            self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
+        return self
+
+    def decision_function(self, X):
+        check_is_fitted(self)
+        X = check_array(X)
+        phi = rbf_kernel(X,self.X_train)
+        tmp = np.dot(phi,self.model)
+        self.score_ = np.zeros((len(X)))
+        for i in range(tmp.shape[0]):
+            self.score_[i] = np.dot(tmp[i,:],phi[i,:])
+        return self.score_
+
+    def predict(self, X):
+        """Predict the labels (1 inlier, -1 outlier) of X according to ECF.
+        This method allows to generalize prediction to *new observations* (not in the training set).
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            The query samples.
+        Returns
+        -------
+        is_inlier : ndarray of shape (n_samples,)
+            Returns -1 for anomalies/outliers and +1 for inliers.
+        """
+
+        check_is_fitted(self)
+        X = check_array(X)
+
+        n,p = X.shape
+        self.decision_function(X)
+        self.predict_ = np.ones(n, dtype=int)
+        self.predict_[self.score_ >= self.level_set_] = -1
+        return self.predict_
+
+
+
 class BaggedECF(BaseEstimator, OutlierMixin):
 
     def __init__(self, degree=3, n_models=50, contamination="auto"):
@@ -261,3 +350,4 @@ class BaggedECF(BaseEstimator, OutlierMixin):
             pred = np.array([self.models_[i].decision_function(X[:,self.features_[i]]) for i in range(self.n_models)])
             self.score_ = np.sum(pred,axis=0)
             return self.score_
+    # TODO predict
