@@ -270,6 +270,15 @@ class KECF(BaseEstimator, OutlierMixin):
         self.coef0 = coef0
         self.contamination = contamination
 
+    def get_params(self, deep=True):
+        return {"kernel": self.kernel, "gamma": self.gamma, "C": self.C, "degree": self.degree, "coef0": self.coef0, "contamination": self.contamination}
+
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
+
+
     def _apply_kernel(self, X, Y):
         if self.kernel == "rbf":
             return rbf_kernel(X, Y, self.gamma)
