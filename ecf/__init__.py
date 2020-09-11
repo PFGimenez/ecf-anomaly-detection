@@ -8,7 +8,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.decomposition import PCA
 from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
-from sklearn.metrics.pairwise import rbf_kernel
+from sklearn.metrics.pairwise import rbf_kernel, polynomial_kernel, sigmoid_kernel, linear_kernel
 
 class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     """Unsupervised outlier and novelty detection using the empirical Christoffel function
@@ -243,13 +243,28 @@ class KECF(BaseEstimator, OutlierMixin):
     ----------
     [3] Askari, A., Yang, F., & Ghaoui, L. E. (2018). Kernel-based outlier detection using the inverse christoffel function. arXiv preprint arXiv:1806.06775.
     """
-
-    def __init__(self, kernel="rbf", gamma="auto", C=1, rho=1, contamination="auto"):
+    def __init__(self, kernel="rbf", gamma="auto", C=500, degree=3, coef0=1, contamination="auto"):
+        # normalized dataset
         self.kernel = kernel
         self.gamma = gamma
         self.C = C
-        self.rho = rho
+        self.degree = degree
+        self.coef0 = coef0
         self.contamination = contamination
+
+    def _apply_kernel(self, X, Y):
+        if self.kernel == "rbf":
+            return rbf_kernel(X, Y, self.gamma)
+        elif self.kernel == "sigmoid":
+            return sigmoid_kernel(X, Y, self.gamma, self.coef0)
+        elif self.kernel == "poly":
+            return polynomial_kernel(X, Y, self.degree, self.gamma, self.coef0)
+        elif self.kernel == "linear":
+            return linear_kernel(X, Y)
+        elif callable(self.kernel):
+            return self.kernel(X, Y)
+        else:
+            raise ValueError("Unknown kernel: "+str(self.kernel))
 
     def fit(self, X, y=None):
         self.X_train = check_array(X)
@@ -259,14 +274,14 @@ class KECF(BaseEstimator, OutlierMixin):
         if self.gamma == "auto":
             self.gamma = 1/p
 
-        self.model = np.zeros((n,n))
+        Q = np.zeros((n,n))
         # compute phi * phi.T from [3]
-        self.model = rbf_kernel(self.X_train,self.X_train)
-        print(self.model.shape)
-        self.model = np.linalg.inv(np.identity(n) + self.model/self.rho)
-        print(self.model.shape)
+        Q = self._apply_kernel(self.X_train, self.X_train)
+        # rho as proposed by [3]
+        self.rho = np.linalg.norm(Q)/(self.C*math.sqrt(n)) # TODO pas sûr de là où mettre sqrt(n)
+        self.model = np.linalg.inv(np.identity(n) + Q/self.rho)
         if self.contamination == "auto":
-            self.level_set_ = 100
+            self.level_set_ = 100 # TODO
             # self.level_set_ = self.rho * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
         else:
             self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
@@ -275,7 +290,7 @@ class KECF(BaseEstimator, OutlierMixin):
     def decision_function(self, X):
         check_is_fitted(self)
         X = check_array(X)
-        phi = rbf_kernel(X,self.X_train)
+        phi = self._apply_kernel(X,self.X_train)
         tmp = np.dot(phi,self.model)
         self.score_ = np.zeros((len(X)))
         for i in range(tmp.shape[0]):
@@ -305,7 +320,6 @@ class KECF(BaseEstimator, OutlierMixin):
         return self.predict_
 
 
-
 class BaggedECF(BaseEstimator, OutlierMixin):
 
     def __init__(self, degree=3, n_models=50, contamination="auto"):
@@ -316,6 +330,7 @@ class BaggedECF(BaseEstimator, OutlierMixin):
     def fit(self, X, y=None):
         X = check_array(X)
         n,p = X.shape
+        # TODO PCA
         self.n_components = max(2,math.floor(math.sqrt(p)))
         self.n_components = min(30,max(2,math.floor(p/3)))
         # can't bag with p <= n_components, i.e. if p=1 or p=2
