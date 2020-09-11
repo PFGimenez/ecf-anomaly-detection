@@ -23,7 +23,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
 
     Parameters
     ----------
-    degree : int, default=4
+    degree : int, default=3
         The degree of the polynomial. Higher the degree, more complex the model. It should be at least 2.
     n_components : int, default=4
         The maximal number of components.
@@ -53,11 +53,12 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     level_set_ = None
     model_ = None
     robust_scaler_ = None
+    # post_robust_scaler_ = None
     pca_ = None
     decision_scores_ = None # score of the training data, pyod-compliant
     labels_ = None # labels of the training data, pyod-compliant
 
-    def __init__(self, degree=4, n_components=4, contamination="auto", filtering_frac=1.0):
+    def __init__(self, degree=3, n_components=4, contamination="auto", filtering_frac=1.0):
         self.degree = degree
         self.n_components = n_components
         self.contamination = contamination
@@ -68,8 +69,10 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         # verify if not already processed
         if self.pca_ is None or np.array(X).shape[1] <= self.n_components:
             return X
+            # return self.post_robust_scaler_.transform(X)
         else:
             return self.pca_.transform(self.robust_scaler_.transform(X))
+            # return self.post_robust_scaler_.transform(self.pca_.transform(self.robust_scaler_.transform(X)))
 
     def get_params(self, deep=True):
         return {"degree": self.degree, "n_components": self.n_components, "contamination": self.contamination, "filtering_frac": self.filtering_frac}
@@ -94,7 +97,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
     def fit(self, X, y=None):
         self._fit_once(X)
         if self.filtering_frac < 1.0:
-            p = np.percentile(self.decision_scores_, self.filtering_frac*100)
+            p = np.percentile(self.decision_scores_, self.filtering_frac * 100)
             X = X[self.decision_scores_ < p]
             self._fit_once(X)
         return self
@@ -119,11 +122,14 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         # learn the new robust scaler and PCA
             self.robust_scaler_ = RobustScaler()
             self.pca_ = PCA(n_components=self.n_components)
-            self.pca_.fit(self.robust_scaler_.fit_transform(X))
+            data = self.pca_.fit_transform(self.robust_scaler_.fit_transform(X))
+            # self.post_robust_scaler_ = RobustScaler().fit_transform(data)
         else:
             self.robust_scaler_ = None
+            # self.post_robust_scaler_ = RobustScaler().fit(X)
             self.pca_ = None
 
+        unprocessed_X = np.copy(X)
         X = self._process_data(X)
         n,p = X.shape
         # monome powers, denoted v_d(X) in [1]
@@ -165,7 +171,7 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         else:
             self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
 
-        self.labels_ = self.predict(X)
+        self.labels_ = self.predict(unprocessed_X)
         return self
 
     def predict(self, X):
@@ -183,8 +189,6 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
 
         check_is_fitted(self)
         X = check_array(X)
-        X = self._process_data(X)
-
         n,p = X.shape
         self.decision_function(X)
         self.predict_ = np.ones(n, dtype=int)
@@ -201,6 +205,15 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         # cf. Eq. (2) in [1]
         self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
         return self.score_
+
+    # def density(self, X):
+    #     self.decision_function(X)
+    #     X = self._process_data(X)
+    #     n,p = X.shape
+    #     density = np.zeros((n))
+    #     a = (self.degree+1)/2
+    #     for i in range(n):
+    #         density[i] = 1 / self.score_[i] * math.gamma(a) / (math.pi**a) * math.sqrt(max(0,1 - np.linalg.norm(X[i])*1.35/2)) * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
 
     def fit_predict(self, X, y=None):
         """Fits the model to the training set X and returns the labels.
