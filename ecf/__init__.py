@@ -206,14 +206,19 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         self.score_ = np.sum(mat*np.dot(mat,self.model_),axis=1)
         return self.score_
 
-    # def density(self, X):
-    #     self.decision_function(X)
-    #     X = self._process_data(X)
-    #     n,p = X.shape
-    #     density = np.zeros((n))
-    #     a = (self.degree+1)/2
-    #     for i in range(n):
-    #         density[i] = 1 / self.score_[i] * math.gamma(a) / (math.pi**a) * math.sqrt(max(0,1 - np.linalg.norm(X[i])*1.35/2)) * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+    # Reference: Kroó, A., & Lubinsky, D. S. (2013). Christoffel functions and universality in the bulk for multivariate orthogonal polynomials. Canadian Journal of Mathematics, 65(3), 600-620.
+    def density(self, X):
+        self.decision_function(X)
+        X = self._process_data(X)
+        n,p = X.shape
+        self.density_ = np.zeros((n))
+        a = (self.degree+1)/2
+        factor = math.gamma(a) / (math.pi**a) * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+        for i in range(n):
+            self.density_[i] = factor / self.score_[i] * math.sqrt(max(0,1 - np.linalg.norm(X[i])*1.35/2))
+            # 1.35/2 comes from the fact that we consider the euclidian ball of radius 2 sigma (so 95% of the points fall inside). After the robust standardization, the radius of the ball is about 1.35 sigma (under gaussian assumption).
+        return self.density_
+
 
     def fit_predict(self, X, y=None):
         """Fits the model to the training set X and returns the labels.
