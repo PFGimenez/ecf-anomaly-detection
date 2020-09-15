@@ -261,7 +261,7 @@ class KECF(BaseEstimator, OutlierMixin):
     ----------
     [3] Askari, A., Yang, F., & Ghaoui, L. E. (2018). Kernel-based outlier detection using the inverse christoffel function. arXiv preprint arXiv:1806.06775.
     """
-    def __init__(self, kernel="rbf", gamma="auto", C=500, degree=3, coef0=1, contamination="auto"):
+    def __init__(self, kernel="rbf", gamma="scale", C=5000, degree=3, coef0=1, contamination="auto"):
         # normalized dataset
         self.kernel = kernel
         self.gamma = gamma
@@ -298,18 +298,29 @@ class KECF(BaseEstimator, OutlierMixin):
         n,p = X.shape
         # default value
 
+        self.post_robust_scaler_ = RobustScaler().fit(self.X_train)
         if self.gamma == "auto":
-            self.gamma = 1/p
+            self.gamma = 1.0 / p
+        elif self.gamma == "scale":
+            X_var = X.var()
+            print(X_var)
+            if X_var != 0:
+                self.gamma = 1.0 / (p * X_var)
+            else:
+                self.gamma = 1.0
 
+        self.X_train = self.post_robust_scaler_.transform(self.X_train)
         Q = np.zeros((n,n))
         # compute phi * phi.T from [3]
         Q = self._apply_kernel(self.X_train, self.X_train)
         # rho as proposed by [3]
-        self.rho = np.linalg.norm(Q)/(self.C*math.sqrt(n)) # TODO pas sûr de là où mettre sqrt(n)
+        self.rho = np.linalg.norm(Q)/(self.C*math.sqrt(n))
         self.model = np.linalg.inv(np.identity(n) + Q/self.rho)
         if self.contamination == "auto":
-            self.level_set_ = 100 # TODO
-            # self.level_set_ = self.rho * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+            if self.kernel == "poly":
+                self.level_set_ = self.rho * math.factorial(p + self.degree) / (math.factorial(p) * math.factorial(self.degree))
+            else:
+                self.level_set_ = 100 # TODO
         else:
             self.level_set_ = np.percentile(self.decision_scores_, 100. * (1 - self.contamination))
         return self
@@ -317,6 +328,7 @@ class KECF(BaseEstimator, OutlierMixin):
     def decision_function(self, X):
         check_is_fitted(self)
         X = check_array(X)
+        X = self.post_robust_scaler_.transform(X)
         phi = self._apply_kernel(X,self.X_train)
         tmp = np.dot(phi,self.model)
         self.score_ = np.zeros((len(X)))
