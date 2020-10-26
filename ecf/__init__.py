@@ -303,7 +303,6 @@ class KECF(BaseEstimator, OutlierMixin):
             self.gamma = 1.0 / p
         elif self.gamma == "scale":
             X_var = X.var()
-            print(X_var)
             if X_var != 0:
                 self.gamma = 1.0 / (p * X_var)
             else:
