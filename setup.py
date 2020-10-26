@@ -7,7 +7,7 @@ setuptools.setup(
     name="ecf",
     version="0.2",
     author="Pierre-François Gimenez",
-    author_email="<pierre-francois.gimenez@laas.fr>",
+    author_email="<pierre-francois.gimenez@centralesupelec.fr>",
     description="Empirical Christoffel function for anomaly detection",
     long_description=long_description,
     long_description_content_type="text/markdown",

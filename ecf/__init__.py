@@ -1,4 +1,4 @@
-# Author: Pierre-François Gimenez <pierre-francois.gimenez@laas.fr>
+# Author: Pierre-François Gimenez <pierre-francois.gimenez@centralesupelec.fr>
 # License: MIT
 
 import numpy as np
@@ -160,8 +160,8 @@ class EmpiricalChristoffelFunction(BaseEstimator, OutlierMixin):
         md = np.dot(np.transpose(mat),mat)
         # md is denoted M_d(mu) in [1]. It is the moment matrix.
         # cf. the last equation of Section 2.2 in [1]
-        self.model_ = np.linalg.inv(md/n+np.identity(nb_mon)*0.000001)
-        # add a small value on the diagonal to avoid numerical problems
+        self.model_ = np.linalg.inv(md/n+np.identity(nb_mon)*0.00000000001)
+        # add a small value on the diagonal to avoid numerical instability
         # model is M_d(mu)^-1 in [1]
         self.decision_scores_ = self.decision_function(X)
 
